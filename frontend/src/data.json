@@ -1,0 +1,35 @@
+[
+    {
+        "reg_no": "E67/6272/2021",
+        "index_no": "082100304058",
+        "year_joined": 2021,
+        "faculty": "Education",
+        "course": "Bachelor of Education in ICT",
+        "full_name": "MATU WAMAI KARIUKI",
+        "email": "wamaimatu@gmail.com",
+        "contact": "0700699478",
+        "user_type": "student"
+    },
+    {
+      "reg_no": "E67/6273/2021",
+      "index_no": "082100304058",
+      "year_joined": 2021,
+      "faculty": "Education",
+      "course": "Bachelor of Education in ICT",
+      "full_name": "JAMES DOE DUI",
+      "email": "jamesdoe@example.com",
+      "contact": "0745698131",
+      "user_type": "student"
+    },
+    {
+      "reg_no": "E67/6274/2021",
+      "index_no": "082100304058",
+      "year_joined": 2021,
+      "faculty": "Education",
+      "course": "Bachelor of Education in ICT",
+      "full_name": "Cate Maria Mau",
+      "email": "catemaria@gmail.com",
+      "contact": "0763894562",
+      "user_type": "student"
+    }
+]
