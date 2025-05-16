@@ -2,12 +2,16 @@ import { createSlice } from "@reduxjs/toolkit";
 
 const initialState = {
   loading: false,
+  loadingReport: false,
   saving: false,
   error: null,
   course_created: false,
   courses: [],
   classList: {},
   userCourses: [],
+  studentMissingResults: [],
+  studentReportedMissingResults: [],
+  missingReportedSuccess: false,
   assigned: false,
   courseDelete: false,
   published: null,
@@ -95,6 +99,39 @@ export const courseSlice = createSlice({
       state.saving = false;
       state.error = action.payload;
     },
+    fetchMissingResultsStart: (state) => {
+      state.loading = true;
+      state.error = null;
+    },
+    fetchMissingResultsSuccess: (state, action) => {
+      state.loading = false;
+      state.studentMissingResults = action.payload;
+    },
+    fetchMissingResultsFail: (state, action) => {
+      state.loading = false;
+      state.error = action.payload;
+    },
+    fetchReportedMissingResultsSuccess: (state, action) => {
+      state.loading = false;
+      state.studentReportedMissingResults = action.payload;
+    },
+    reportMissingResultStart: (state) => {
+      state.loadingReport = true;
+      state.error = null;
+      state.missingReportedSuccess = false;
+    }
+    ,
+    reportMissingResultSuccess: (state) => {
+      state.loadingReport = false;
+      state.missingReportedSuccess = true;
+    }
+    ,
+    reportMissingResultFail: (state, action) => {
+      state.loadingReport = false;
+      state.error = action.payload;
+      state.missingReportedSuccess = false;
+    }
+    ,
     resetCourseState: (state) => {
       state.assigned = false;
       state.course_created = false;
@@ -102,6 +139,8 @@ export const courseSlice = createSlice({
       state.courseDelete = false;
       state.enrolled = false;
       state.published = null;
+      state.saved = false;
+      state.missingReportedSuccess = false;
     },
   },
 });
@@ -125,7 +164,14 @@ export const {
   savingStart,
   savingSuccess,
   savingFail,
-  publishResultSuccess
+  publishResultSuccess,
+  fetchMissingResultsStart,
+  fetchMissingResultsSuccess,
+  fetchMissingResultsFail,
+  reportMissingResultStart,
+  reportMissingResultSuccess,
+  reportMissingResultFail,
+  fetchReportedMissingResultsSuccess
 } = courseSlice.actions;
 
 export default courseSlice.reducer;

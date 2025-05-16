@@ -139,6 +139,16 @@ class Enrollment(models.Model):
         # Define unique constraint for student and course_code combination
         unique_together = ('student', 'course_code')
 
+class MissingMarks(models.Model):
+    enrollment = models.ForeignKey(
+        Enrollment, on_delete=models.CASCADE)
+    missing_marks = models.BooleanField(default=False)
+    missing_marks_reason = models.TextField(null=True, blank=True)
+    resolved = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"Missing marks for {self.enrollment.student} in {self.enrollment.course_code.course_code} - Resolved: {self.resolved}"
+
 class Teaching(models.Model):
     course = models.ForeignKey(
         Course, null=True, on_delete=models.CASCADE)

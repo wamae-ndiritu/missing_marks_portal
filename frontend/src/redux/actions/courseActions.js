@@ -9,12 +9,19 @@ import {
   deleteCourseFail,
   deleteCourseStart,
   deleteCourseSuccess,
+  fetchMissingResultsFail,
+  fetchMissingResultsStart,
+  fetchMissingResultsSuccess,
+  fetchReportedMissingResultsSuccess,
   getClassListSuccess,
   getCoursesFail,
   getCoursesStart,
   getCoursesSuccess,
   getLecturerCoursesSuccess,
   publishResultSuccess,
+  reportMissingResultFail,
+  reportMissingResultStart,
+  reportMissingResultSuccess,
   savingFail,
   savingStart,
   savingSuccess,
@@ -395,6 +402,113 @@ export const publishResults = (courseData) => async (dispatch, getState) => {
       dispatch(logout());
     } else {
       dispatch(actionFail(errMsg));
+    }
+  }
+};
+
+export const listStudentMissingResults = () => async (dispatch, getState) => {
+  try {
+    dispatch(fetchMissingResultsStart());
+
+    const {
+      user: { userInfo },
+    } = getState();
+
+    const config = {
+      headers: {
+        Authorization: `Bearer ${userInfo?.token?.access}`,
+      },
+    };
+    const {data} = await axios.get(`${BASE_URL}/courses/results/missing/`, config);
+    dispatch(fetchMissingResultsSuccess(data));
+  } catch (err) {
+    console.log(err)
+    const errMsg =
+      err?.data && err?.data?.length
+        ? err.data[0]?.message
+        : err?.data
+        ? err.data?.message || err.data?.detail
+        : err.statusText;
+    if (
+      errMsg === "Authentication credentials were not provided." ||
+      errMsg === "Given token not valid for any token type"
+    ) {
+      dispatch(logout());
+    }
+    dispatch(fetchMissingResultsFail(errMsg));
+  }
+};
+
+export const listStudentReportedMissingResults = () => async (dispatch, getState) => {
+  try {
+    dispatch(fetchMissingResultsStart());
+
+    const {
+      user: { userInfo },
+    } = getState();
+
+    const config = {
+      headers: {
+        Authorization: `Bearer ${userInfo?.token?.access}`,
+      },
+    };
+    const { data } = await axios.get(
+      `${BASE_URL}/courses/reported-missing-results/`,
+      config
+    );
+    dispatch(fetchReportedMissingResultsSuccess(data));
+  } catch (err) {
+    console.log(err);
+    const errMsg =
+      err?.data && err?.data?.length
+        ? err.data[0]?.message
+        : err?.data
+        ? err.data?.message || err.data?.detail
+        : err.statusText;
+    if (
+      errMsg === "Authentication credentials were not provided." ||
+      errMsg === "Given token not valid for any token type"
+    ) {
+      dispatch(logout());
+    }
+    dispatch(fetchMissingResultsFail(errMsg));
+  }
+};
+
+export const reportMissingMarks = (id) => async (dispatch, getState) => {
+  try {
+    dispatch(reportMissingResultStart());
+    const {
+      user: { userInfo },
+    } = getState();
+
+    const config = {
+      headers: {
+        Authorization: `Bearer ${userInfo?.token?.access}`,
+        "Content-Type": "application/json",
+      },
+    };
+    await axios.post(
+      `${BASE_URL}/courses/results/report-missing/`,
+      {enrollment_id: id},
+      config
+    );
+    dispatch(reportMissingResultSuccess());
+  } catch (err) {
+    console.log(err);
+    const errMsg =
+      err?.data && err?.data?.length
+        ? err.data[0]?.message
+        : err?.data
+        ? err.data?.message || err.data?.detail
+        : err.statusText;
+    if (
+      errMsg === "Authentication credentials were not provided." ||
+      errMsg === "Given token not valid for any token type"
+    ) {
+      dispatch(logout());
+    } else {
+      dispatch(reportMissingResultFail(errMsg));
     }
   }
 };

@@ -13,6 +13,8 @@ const CourseListPage = () => {
 
   const [formattedCourses, setFormattedCourses] = useState({});
 
+  console.log("My Courses: ", myCourses);
+
 
   useEffect(() => {
     dispatch(getCourses());

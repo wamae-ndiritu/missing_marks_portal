@@ -1,14 +1,17 @@
+from rest_framework.exceptions import ValidationError as DRFValidationError
+from app.models import Lecturer, Course, Semester, Teaching
+from django.db.utils import IntegrityError
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.generics import get_object_or_404
-from .helpers import generate_random_password, send_password_email, send_results_notification, send_missing_results_notification
+from .helpers import generate_random_password, send_password_email, send_results_notification, send_missing_results_notification, send_missing_mark_notification_to_lecturer, send_missing_mark_report_update
 from django.db.models import Count, Avg
 import json
 from .serializers import StudentSerializer, LecturerSerializer, CustomUserSerializer, CourseSerializer, SemesterSerializer, EnrollmentSerializer, ResultPermissionSerializer
-from .models import CustomUser, Student, Lecturer, Course, Semester, Enrollment, ResultPermission, Teaching
+from .models import CustomUser, Student, Lecturer, Course, Semester, Enrollment, ResultPermission, Teaching, MissingMarks
 
 
 @api_view(['POST'])
@@ -394,9 +397,9 @@ def get_course_students(request):
         course_code__course_code=course_code, semester__id=teaching.semester.id)
     is_published = ResultPermission.objects.get(
         course__course_code=course_code).marks_published
-    
+
     students = []
-    
+
     query_params = request.query_params
     search_id = query_params.get('searchId')
     if search_id:
@@ -491,13 +494,14 @@ def publish_results(request):
             else:
                 # Handle missing marks
                 missing_mark_emails.append(enrollment.student.user.email)
-                
+
         result_permission = ResultPermission.objects.get(
             course__course_code=course_code)
         result_permission.marks_published = True
         result_permission.save()
         send_results_notification(emails, result_permission.course.course_name)
-        send_missing_results_notification(missing_mark_emails, result_permission.course.course_name)
+        send_missing_results_notification(
+            missing_mark_emails, result_permission.course.course_name)
         return Response({"message": "Results has been published successfully! Each student will be notified of the updates via their emails."}, status=status.HTTP_200_OK)
 
 
@@ -515,7 +519,6 @@ def get_student_courses(request):
     # Extract student details from enrollments
     courses = [{'enrollment_id': enrollment.id, 'course_code': enrollment.course_code.course_code, 'course_name': enrollment.course_code.course_name,
                 'exam_type': enrollment.exam_type, "semester": enrollment.semester.id} for enrollment in enrollments if enrollment is not None]
-
 
     return Response(courses, status=status.HTTP_200_OK)
 
@@ -539,7 +542,7 @@ def get_student_results(request):
             user_serializer = CustomUserSerializer(user)
             student_info = {
                 **student_serializer.data,
-                    **user_serializer.data
+                **user_serializer.data
             }
             students.append(student_info)
             return Response(students, status=status.HTTP_200_OK)
@@ -549,7 +552,7 @@ def get_student_results(request):
     user = request.user
     enrollments = Enrollment.objects.filter(
         student__user__id=user.id, result_permission__marks_published=True)
-    
+
     # Initialize a dictionary to store courses by semester
     courses_by_semester = {}
 
@@ -574,8 +577,9 @@ def get_student_results(request):
 
     return Response(courses_by_semester, status=status.HTTP_200_OK)
 
-
 # Enroll student to course
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def enroll_course(request):
@@ -615,6 +619,72 @@ def enroll_course(request):
             return Response(errors, status=status.HTTP_400_BAD_REQUEST)
         return Response({'message': 'Enrolled successfully'}, status=status.HTTP_201_CREATED)
 
+# Get student missing results
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_student_missing_results(request):
+    """
+    Get current user courses whose marks are not published
+    """
+    user = request.user
+    enrollments = Enrollment.objects.filter(
+        student__user__id=user.id, result_permission__marks_published=False)
+
+    # Extract student details from enrollments
+    courses = [{'enrollment_id': enrollment.id, 'course_code': enrollment.course_code.course_code, 'course_name': enrollment.course_code.course_name,
+                'exam_type': enrollment.exam_type, "semester": enrollment.semester.id} for enrollment in enrollments if enrollment is not None]
+
+    return Response(courses, status=status.HTTP_200_OK)
+
+# Student report missing results
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def report_missing_results(request):
+    """
+    Report missing results for a course
+    """
+    if request.method == 'POST':
+        user = request.user
+        enrollment_id = request.data.get('enrollment_id')
+        enrollment = get_object_or_404(Enrollment, id=enrollment_id)
+        if enrollment:
+            # Prevent duplicate reports for the same enrollment
+            if MissingMarks.objects.filter(enrollment=enrollment).exists():
+                return Response({"message": "Missing marks for this enrollment have already been reported!"}, status=status.HTTP_400_BAD_REQUEST)
+            missing_marks = MissingMarks.objects.create(
+                enrollment=enrollment,
+                missing_marks=True,
+                missing_marks_reason=request.data.get('missing_marks_reason')
+            )
+            teaching = get_object_or_404(Teaching, course_id=enrollment.course_code.course_code)
+            send_missing_mark_notification_to_lecturer(
+                teaching.lecturer.user.email, f"{enrollment.course_code.course_code} - {enrollment.course_code.course_name}")
+            return Response({"message": "Missing marks reported successfully!"}, status=status.HTTP_201_CREATED)
+        else:
+            return Response({"message": "Enrollment not found!"}, status=status.HTTP_404_NOT_FOUND)
+    return Response({"message": "Invalid request method!"}, status=status.HTTP_400_BAD_REQUEST)
+
+# Get user reported missing results
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_student_reported_missing_results(request):
+    """
+    Get current user reported missing results
+    """
+    user = request.user
+
+    reported_missing_results = MissingMarks.objects.filter(
+        enrollment__student__user__id=user.id)
+
+    # Extract student details from enrollments
+    missing_results = [{'reason': report.missing_marks_reason, 'is_resolved': report.resolved, 'enrollment_id': report.enrollment.id, 'course_code': report.enrollment.course_code.course_code, 'course_name': report.enrollment.course_code.course_name,'exam_type': report.enrollment.exam_type, "semester": report.enrollment.semester.id} for report in reported_missing_results if report is not None]
+
+    return Response(missing_results, status=status.HTTP_200_OK)
 
 # Get perfomance stats
 @api_view(['GET'])
@@ -656,8 +726,9 @@ def get_perfomance_stats(request):
             analysis[grade] = "Positive" if count < 3 else "Negative"
         else:
             analysis[grade] = "Neutral"
-    
-    semester_averages = enrollments.values('semester').annotate(avg_score=Avg('score'))
+
+    semester_averages = enrollments.values(
+        'semester').annotate(avg_score=Avg('score'))
 
     # Prepare response data
     data = {
@@ -703,6 +774,7 @@ def get_lecturer_courses(request):
 
 # Get course lecturers
 
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_courses_lecturers(request):
@@ -718,14 +790,6 @@ def get_courses_lecturers(request):
 
 # Admin assign lecturer courses
 
-
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
-from django.db.utils import IntegrityError
-from app.models import Lecturer, Course, Semester, Teaching
-from rest_framework.exceptions import ValidationError as DRFValidationError
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -756,7 +820,8 @@ def allocate_lecturer_course(request, lecturer_id):
             return Response({'message': 'This course is already assigned to the lecturer in the selected semester.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Assign the course to the lecturer for the semester
-        teaching = Teaching.objects.create(lecturer=lecturer, course=course, semester=semester)
+        teaching = Teaching.objects.create(
+            lecturer=lecturer, course=course, semester=semester)
 
         return Response({'message': f'Course {course_code} assigned to lecturer {lecturer_id} for semester {semester_id}.'}, status=status.HTTP_201_CREATED)
 
@@ -786,6 +851,8 @@ def admin_get_lecturer_courses(request, lecturer_id):
     return Response({"message": "Invalid request method!"}, status=status.HTTP_403_BAD_REQUEST)
 
 # Admin get lecturer details
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def admin_get_lecturer_details(request, lecturer_id):

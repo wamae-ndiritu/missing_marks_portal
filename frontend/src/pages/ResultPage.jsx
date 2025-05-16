@@ -5,7 +5,10 @@ import {
   autoSaveMarks,
   getClassList,
   getMyCourses,
+  listStudentMissingResults,
+  listStudentReportedMissingResults,
   publishResults,
+  reportMissingMarks,
 } from "../redux/actions/courseActions";
 import Message from "../components/Message";
 import { getStudentResults } from "../redux/actions/userActions";
@@ -14,13 +17,23 @@ import { resetCourseState } from "../redux/slices/courseSlice";
 const ResultPage = () => {
   const dispatch = useDispatch();
   const { myCourses } = useSelector((state) => state.user);
-  const { classList, loading, saving, error, published } = useSelector((state) => state.course);
+  const {
+    classList,
+    loading,
+    loadingReport,
+    saving,
+    error,
+    published,
+    studentMissingResults,
+    studentReportedMissingResults,
+    missingReportedSuccess,
+  } = useSelector((state) => state.course);
   const { userInfo, myResults } = useSelector((state) => state.user);
   const [selectedCourse, setSelectedCourse] = useState("");
   const [enrollments, setEnrollments] = useState([]);
   const [publishSuccess, setPublishSuccess] = useState(null);
   const [searchId, setSearchId] = useState("");
-
+  const [missingResultId, setMissingResultId] = useState("");
 
   // Downloading class List
   const fetchClassList = () => {
@@ -83,6 +96,13 @@ const ResultPage = () => {
     });
   };
 
+  const handleReportMissing = () => {
+    if (missingResultId) {
+      dispatch(reportMissingMarks(missingResultId));
+      setMissingResultId("");
+    }
+  }
+
   const handlePublishResults = () => {
     dispatch(publishResults({ course_code: classList?.course }));
   };
@@ -104,8 +124,10 @@ const ResultPage = () => {
   useEffect(() => {
     if (userInfo?.user?.user_type === 'student'){
       dispatch(getStudentResults());
+      dispatch(listStudentMissingResults())
+      dispatch(listStudentReportedMissingResults())
     }
-  }, [dispatch, userInfo])
+  }, [dispatch, userInfo, missingReportedSuccess])
 
   useEffect(() => {
     if (published){
@@ -122,7 +144,7 @@ const ResultPage = () => {
 
       return () => clearInterval(interval);
     }
-  }, [dispatch, publishSuccess])
+  }, [dispatch, publishSuccess, missingReportedSuccess])
 
   return (
     <>
@@ -137,15 +159,13 @@ const ResultPage = () => {
                   <h6 className='text-gray-900'>Select Course:</h6>
                   <select
                     className='border focus:outline-none p-2'
-                    onChange={(e) => setSelectedCourse(e.target.value)}
-                  >
+                    onChange={(e) => setSelectedCourse(e.target.value)}>
                     <option value=''>--Select Course--</option>
                     {myCourses.map((course) => {
                       return (
                         <option
                           key={course.course_id}
-                          value={course.course_code}
-                        >
+                          value={course.course_code}>
                           {course.course_code} - {course.course_name}
                         </option>
                       );
@@ -154,8 +174,7 @@ const ResultPage = () => {
                 </div>
                 <button
                   className='bg-gray-900 text-white px-4 py-2 rounded'
-                  onClick={fetchClassList}
-                >
+                  onClick={fetchClassList}>
                   Get Class List
                 </button>
               </div>
@@ -163,8 +182,7 @@ const ResultPage = () => {
             <div className='my-3 border-b flex justify-between items-center'>
               <form
                 className='flex justify-end gap-1 my-2'
-                onSubmit={handleSearchStudentByStaffId}
-              >
+                onSubmit={handleSearchStudentByStaffId}>
                 <input
                   type='text'
                   className='border border-gray-300 rounded p-2 text-gray-600 focus:outline-amber-400'
@@ -174,8 +192,7 @@ const ResultPage = () => {
                 />
                 <button
                   type='submit'
-                  className='bg-gray-900 px-4 py-1 rounded text-white'
-                >
+                  className='bg-gray-900 px-4 py-1 rounded text-white'>
                   Search
                 </button>
               </form>
@@ -188,22 +205,21 @@ const ResultPage = () => {
                     <>
                       <button
                         className='bg-gray-800 px-4 py-1 text-white'
-                        onClick={handleDownload}
-                      >
+                        onClick={handleDownload}>
                         Download Class List
                       </button>
                       <button
                         type='button'
                         className='bg-green-600 px-4 py-1 text-white'
-                        onClick={() => dispatch(autoSaveMarks({ enrollments }))}
-                      >
+                        onClick={() =>
+                          dispatch(autoSaveMarks({ enrollments }))
+                        }>
                         Save Results
                       </button>
                       <button
                         type='button'
                         className='bg-orange-800 px-4 py-1 text-white'
-                        onClick={handlePublishResults}
-                      >
+                        onClick={handlePublishResults}>
                         Publish Results
                       </button>
                     </>
@@ -214,15 +230,13 @@ const ResultPage = () => {
             <p
               className={`text-green-600 text-xs ${
                 saving ? "visible" : "invisible"
-              }`}
-            >
+              }`}>
               Saving...
             </p>
             <p
               className={`text-red-600 text-xs ${
                 error ? "visible" : "invisible"
-              }`}
-            >
+              }`}>
               Changes not saved! check your internet...
             </p>
             {loading && <p className='text-gray-600'>Loading...</p>}
@@ -325,7 +339,89 @@ const ResultPage = () => {
             <h6 className='text-gray-600 uppercase'>
               Bachelor of Education (ICT)
             </h6>
-            <table className='w-max my-3 text-gray-600 border border-collapse border-gray-300'>
+            {missingReportedSuccess && (
+              <Message variant='success' onClose={closePublishSuccess}>
+                Missing result reported successfully!
+              </Message>
+            )}
+            {/* Notice about reporting missing results */}
+            <div className='w-full my-4'>
+              <h3 className='text-gray-600 font-semibold mb-2'>
+                Reporting Missing Results
+              </h3>
+              <div className='flex bg-blue-50 border-l-4 border-blue-500 p-4 rounded'>
+                <div className='flex-shrink-0 mr-3'>
+                  <svg
+                    className='h-6 w-6 text-blue-500'
+                    fill='none'
+                    stroke='currentColor'
+                    strokeWidth='2'
+                    viewBox='0 0 24 24'>
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      d='M13 16h-1v-4h-1m1-4h.01M12 20a8 8 0 100-16 8 8 0 000 16z'
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <p className='text-blue-800 font-semibold mb-1'>
+                    How reporting missing results works:
+                  </p>
+                  <ul className='text-blue-700 text-sm list-disc pl-5 space-y-1'>
+                    <li>
+                      When you report a missing result, your lecturer will be
+                      notified and a follow-up will be initiated.
+                    </li>
+                    <li>
+                      If your marks are found and uploaded, the report will be
+                      resolved and you will receive a confirmation email.
+                    </li>
+                    <li>
+                      If you missed an exam (and that&apos;s why you have a
+                      missing result), the lecturer will note this as the
+                      reason. You will receive a confirmation email marked as
+                      resolved, and you will be required to arrange how to sit
+                      for the exam.
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <div className='w-full flex items-end gap-3 my-2'>
+              <div className='flex-1 flex flex-col'>
+                <h6>Select Course</h6>
+                <select
+                  className='border border-gray-300 p-2 outline-none'
+                  onChange={(e) => setMissingResultId(e.target.value)}
+                  value={missingResultId}>
+                  <option value=''>--Select Course--</option>
+                  {studentMissingResults.map((result) => {
+                    return (
+                      <option
+                        key={result.enrollment_id}
+                        value={result.enrollment_id}>
+                        {result.course_code} - {result.course_name}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              <button
+                className={`bg-gray-900 text-white px-4 py-2 rounded ${
+                  missingResultId || !loadingReport
+                    ? ""
+                    : "opacity-50 cursor-not-allowed"
+                }`}
+                onClick={handleReportMissing}
+                disabled={!missingResultId || loadingReport}>
+                {loadingReport ? "Reporting..." : "Report"}
+              </button>
+            </div>
+            <h3 className='text-gray-600 font-semibold mb-2 text-left my-4'>
+              Results
+            </h3>
+            <table className='min-w-full w-max my-3 text-gray-600 border border-collapse border-gray-300'>
               <thead>
                 <tr>
                   <th className='border border-gray-300 p-2 text-left'>S/NO</th>
@@ -387,6 +483,78 @@ const ResultPage = () => {
                   );
                 })}
             </table>
+            {/* List a table showing reported missing marks and their status (resolved, reason etc) */}
+            {studentReportedMissingResults &&
+              studentReportedMissingResults.length > 0 && (
+                <div className='w-full mt-6'>
+                  <h3 className='text-gray-600 font-semibold mb-2 text-left'>
+                    Reported Missing Results
+                  </h3>
+                  <table className='min-w-full w-max my-3 text-gray-600 border border-collapse border-gray-300'>
+                    <thead>
+                      <tr>
+                        <th className='border border-gray-300 p-2 text-left'>
+                          S/NO
+                        </th>
+                        <th className='border border-gray-300 p-2 text-left'>
+                          Course Code
+                        </th>
+                        <th className='border border-gray-300 p-2 text-left'>
+                          Course Name
+                        </th>
+                        <th className='border border-gray-300 p-2 text-left'>
+                          Semester
+                        </th>
+                        <th className='border border-gray-300 p-2 text-left'>
+                          Exam Type
+                        </th>
+                        <th className='border border-gray-300 p-2 text-left'>
+                          Status
+                        </th>
+                        <th className='border border-gray-300 p-2 text-left'>
+                          Reason
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {studentReportedMissingResults.map((item, idx) => (
+                        <tr key={item.enrollment_id}>
+                          <td className='border border-gray-300 p-2'>
+                            {idx + 1}
+                          </td>
+                          <td className='border border-gray-300 p-2'>
+                            {item.course_code}
+                          </td>
+                          <td className='border border-gray-300 p-2'>
+                            {item.course_name}
+                          </td>
+                          <td className='border border-gray-300 p-2'>
+                            {item.semester}
+                          </td>
+                          <td className='border border-gray-300 p-2'>
+                            {item.exam_type}
+                          </td>
+                          <td className='border border-gray-300 p-2'>
+                            {item.is_resolved ? (
+                              <span className='bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-semibold'>
+                                Resolved
+                              </span>
+                            ) : (
+                              <span className='bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs font-semibold'>
+                                Pending
+                              </span>
+                            )}
+                          </td>
+                          <td className='border border-gray-300 p-2'>
+                            {item.reason ? item.reason : "-"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            
           </div>
         </section>
       )}
