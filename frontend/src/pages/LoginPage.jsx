@@ -75,7 +75,7 @@ const LoginPage = () => {
         </div>
         <div className='flex flex-col items-center'>
           <h4 className='mt-5 font-semibold text-2xl text-blue-300 capitalize'>
-            Missing Marks Portal
+            Missing Marks System
           </h4>
           <span className='text-md text-gray-600 font-normal'>
             Login as{" "}

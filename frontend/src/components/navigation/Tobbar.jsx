@@ -7,7 +7,7 @@ const Tobbar = () => {
   return (
     <div className='bg-blue-50 border-b  px-4 py-3 flex justify-between items-center'>
       <div className=''>
-        <h4 className='text-xl font-semibold'>Student Portal</h4>
+        <h4 className='text-xl font-semibold'>Missing Marks System</h4>
         {/* <h6>Bachelor of Education (ICT)</h6> */}
       </div>
       <div className='flex items-center gap-3'>

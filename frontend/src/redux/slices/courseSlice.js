@@ -3,6 +3,8 @@ import { createSlice } from "@reduxjs/toolkit";
 const initialState = {
   loading: false,
   loadingReport: false,
+  loadingResolve: false,
+  successResolve: false,
   saving: false,
   error: null,
   course_created: false,
@@ -132,6 +134,20 @@ export const courseSlice = createSlice({
       state.missingReportedSuccess = false;
     }
     ,
+    resolveMissingMarkStart: (state) => {
+      state.loadingResolve = true;
+      state.error = null;
+      state.successResolve = false;
+    },
+    resolveMissingMarkSuccess: (state) => {
+      state.loadingResolve = false;
+      state.successResolve = true;
+    },
+    resolveMissingMarkFail: (state, action) => {
+      state.loadingResolve = false;
+      state.error = action.payload;
+      state.successResolve = false;
+    },
     resetCourseState: (state) => {
       state.assigned = false;
       state.course_created = false;
@@ -141,7 +157,11 @@ export const courseSlice = createSlice({
       state.published = null;
       state.saved = false;
       state.missingReportedSuccess = false;
+      state.successResolve = false;
     },
+    resetClassList: (state) => {
+      state.classList = {};
+    }
   },
 });
 
@@ -171,7 +191,11 @@ export const {
   reportMissingResultStart,
   reportMissingResultSuccess,
   reportMissingResultFail,
-  fetchReportedMissingResultsSuccess
+  fetchReportedMissingResultsSuccess,
+  resolveMissingMarkStart,
+  resolveMissingMarkSuccess,
+  resolveMissingMarkFail,
+  resetClassList
 } = courseSlice.actions;
 
 export default courseSlice.reducer;

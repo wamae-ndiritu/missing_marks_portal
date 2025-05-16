@@ -389,10 +389,12 @@ def get_course_students(request):
     """
     user = request.user
     course_code = request.data.get('course_code')
+
+    query_params = request.query_params
+    search_id = query_params.get('searchId')
+
     teaching = Teaching.objects.filter(
         lecturer__user__id=user.id, course__course_code=course_code)[0]
-
-    # Retrieve enrollments for the specified course and semester
     enrollments = Enrollment.objects.filter(
         course_code__course_code=course_code, semester__id=teaching.semester.id)
     is_published = ResultPermission.objects.get(
@@ -400,8 +402,6 @@ def get_course_students(request):
 
     students = []
 
-    query_params = request.query_params
-    search_id = query_params.get('searchId')
     if search_id:
         students = [{'student_id': enrollment.student.id, 'enrollment_id': enrollment.id, 'reg_no': enrollment.student.reg_no, 'student_name': enrollment.student.user.full_name,
                      'coursework_marks': enrollment.coursework_marks, 'exam_marks': enrollment.exam_marks, 'grade': enrollment.grade if enrollment.result_permission.marks_published else None} for enrollment in enrollments if enrollment.student.reg_no == search_id]
@@ -411,6 +411,94 @@ def get_course_students(request):
 
     return Response({'course': course_code, 'students': students, 'published': is_published}, status=status.HTTP_200_OK)
 
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def get_course_missing_mark_students(request):
+    """
+    Get all students enrolled in a given 
+    course at a given semester
+
+    Request Data:
+        course_code: (str) - Unique code for course object
+                    eg. ICS 215, or ICS 215 - Object Oriented Programming
+        semester_id: (str) - Unique id for semester object 
+                    eg. 2023/2024 - SEM 2
+    Response Data:
+        (dict): A dictionary in the format
+        {
+            'course': 'ICS 215 - Object Oriented Programming',
+            'semester': '2023/2024 - SEM 2',
+            'students': [
+                {
+                    'student_id': 1,
+                    'reg_no': 'E46/6272/2021',
+                    'student_name': 'WAMAE JOSEPH NDIRITU',
+                    'coursework_marks': null,
+                    'exam_marks': null
+                }
+                ...
+            ]
+        }
+    """
+    user = request.user
+    course_code = request.data.get('course_code')
+
+    query_params = request.query_params
+
+    teaching = Teaching.objects.filter(
+        lecturer__user__id=user.id, course__course_code=course_code)[0]
+
+    missing_marks = MissingMarks.objects.filter(
+        enrollment__course_code__course_code=course_code, enrollment__semester__id=teaching.semester.id)
+
+    enrollments = [missing_mark.enrollment for missing_mark in missing_marks]
+    is_published = ResultPermission.objects.get(
+        course__course_code=course_code).marks_published
+
+    students = []
+    for enrollment in enrollments:
+        # Get the related MissingMarks object for this enrollment
+        missing_mark_obj = next(
+            (mm for mm in missing_marks if mm.enrollment_id == enrollment.id), None)
+        missing_mark_details = {
+            "id": missing_mark_obj.id,
+            "missing_marks": missing_mark_obj.missing_marks,
+            "missing_marks_reason": missing_mark_obj.missing_marks_reason,
+            "resolved": missing_mark_obj.resolved,
+        } if missing_mark_obj else None
+
+        students.append({
+            'student_id': enrollment.student.id,
+            'enrollment_id': enrollment.id,
+            'reg_no': enrollment.student.reg_no,
+            'student_name': enrollment.student.user.full_name,
+            'coursework_marks': enrollment.coursework_marks,
+            'exam_marks': enrollment.exam_marks,
+            'grade': enrollment.grade if enrollment.result_permission.marks_published else None,
+            'missing_mark': missing_mark_details
+        })
+
+    return Response({'course': course_code, 'students': students, 'published': is_published}, status=status.HTTP_200_OK)
+
+# Lecturer resolve missing marks by updating MissingMark object
+@api_view(['PATCH'])
+# @permission_classes([IsAuthenticated])
+def resolve_missing_mark(request, id):
+    """
+    Resolve missing marks by updating MissingMark object
+    """
+    missing_mark = get_object_or_404(MissingMarks, id=id)
+    if missing_mark:
+        print("Resolving missing mark for enrollment:",
+              request.data.get('reason'))
+        missing_mark.missing_marks_reason = request.data.get('reason')
+        missing_mark.resolved = True
+        missing_mark.save()
+        # Notify the student about the resolution
+        send_missing_mark_report_update(
+            missing_mark.enrollment.student.user.email, missing_mark.enrollment.course_code.course_name)
+        return Response({"message": "Missing marks resolved successfully!"}, status=status.HTTP_200_OK)
 
 @api_view(['PATCH'])
 @permission_classes([IsAuthenticated])
@@ -463,7 +551,7 @@ def publish_results(request):
             course_code__course_code=course_code, semester__id=teaching.semester.id)
 
         for enrollment in enrollments:
-            if enrollment.coursework_marks and enrollment.exam_marks:
+            if enrollment.coursework_marks and enrollment.exam_marks and enrollment.coursework_marks > 0 and enrollment.exam_marks > 0:
                 # Calculate total marks
                 total_marks = enrollment.coursework_marks + enrollment.exam_marks
 
@@ -489,9 +577,23 @@ def publish_results(request):
                     enrollment.score = total_marks
                     emails.append(enrollment.student.user.email)
                     enrollment.save()
+
+                    # Check if the student has missing marks
+                    missing_mark = MissingMarks.objects.get(
+                        enrollment=enrollment, missing_marks=True)
+                    if missing_mark:
+                        missing_mark.resolved = True
+                        missing_mark.missing_marks = False
+                        missing_mark.save()
+                        # Notify the student about the resolution
+                        send_missing_mark_report_update(
+                            enrollment.student.user.email, enrollment.course_code.course_name)
                 except Enrollment.DoesNotExist:
                     pass
             else:
+                enrollment.grade = None
+                enrollment.score = None
+                enrollment.save()
                 # Handle missing marks
                 missing_mark_emails.append(enrollment.student.user.email)
 
@@ -551,7 +653,7 @@ def get_student_results(request):
     users_list = []
     user = request.user
     enrollments = Enrollment.objects.filter(
-        student__user__id=user.id, result_permission__marks_published=True)
+        student__user__id=user.id, result_permission__marks_published=True, grade__isnull=False)
 
     # Initialize a dictionary to store courses by semester
     courses_by_semester = {}
@@ -626,11 +728,11 @@ def enroll_course(request):
 @permission_classes([IsAuthenticated])
 def get_student_missing_results(request):
     """
-    Get current user courses whose marks are not published
+    Get current user courses whose marks published but with no marks
     """
     user = request.user
     enrollments = Enrollment.objects.filter(
-        student__user__id=user.id, result_permission__marks_published=False)
+        student__user__id=user.id, result_permission__marks_published=True, grade=None)
 
     # Extract student details from enrollments
     courses = [{'enrollment_id': enrollment.id, 'course_code': enrollment.course_code.course_code, 'course_name': enrollment.course_code.course_name,
@@ -655,12 +757,13 @@ def report_missing_results(request):
             # Prevent duplicate reports for the same enrollment
             if MissingMarks.objects.filter(enrollment=enrollment).exists():
                 return Response({"message": "Missing marks for this enrollment have already been reported!"}, status=status.HTTP_400_BAD_REQUEST)
-            missing_marks = MissingMarks.objects.create(
+            MissingMarks.objects.create(
                 enrollment=enrollment,
                 missing_marks=True,
                 missing_marks_reason=request.data.get('missing_marks_reason')
             )
-            teaching = get_object_or_404(Teaching, course_id=enrollment.course_code.course_code)
+            teaching = get_object_or_404(
+                Teaching, course_id=enrollment.course_code.course_code)
             send_missing_mark_notification_to_lecturer(
                 teaching.lecturer.user.email, f"{enrollment.course_code.course_code} - {enrollment.course_code.course_name}")
             return Response({"message": "Missing marks reported successfully!"}, status=status.HTTP_201_CREATED)
@@ -669,6 +772,7 @@ def report_missing_results(request):
     return Response({"message": "Invalid request method!"}, status=status.HTTP_400_BAD_REQUEST)
 
 # Get user reported missing results
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -682,11 +786,14 @@ def get_student_reported_missing_results(request):
         enrollment__student__user__id=user.id)
 
     # Extract student details from enrollments
-    missing_results = [{'reason': report.missing_marks_reason, 'is_resolved': report.resolved, 'enrollment_id': report.enrollment.id, 'course_code': report.enrollment.course_code.course_code, 'course_name': report.enrollment.course_code.course_name,'exam_type': report.enrollment.exam_type, "semester": report.enrollment.semester.id} for report in reported_missing_results if report is not None]
+    missing_results = [{'reason': report.missing_marks_reason, 'is_resolved': report.resolved, 'enrollment_id': report.enrollment.id, 'course_code': report.enrollment.course_code.course_code,
+                        'course_name': report.enrollment.course_code.course_name, 'exam_type': report.enrollment.exam_type, "semester": report.enrollment.semester.id} for report in reported_missing_results if report is not None]
 
     return Response(missing_results, status=status.HTTP_200_OK)
 
 # Get perfomance stats
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_perfomance_stats(request):

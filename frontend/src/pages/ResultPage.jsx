@@ -9,10 +9,11 @@ import {
   listStudentReportedMissingResults,
   publishResults,
   reportMissingMarks,
+  resolveMissingMark,
 } from "../redux/actions/courseActions";
 import Message from "../components/Message";
 import { getStudentResults } from "../redux/actions/userActions";
-import { resetCourseState } from "../redux/slices/courseSlice";
+import { resetClassList, resetCourseState } from "../redux/slices/courseSlice";
 
 const ResultPage = () => {
   const dispatch = useDispatch();
@@ -27,6 +28,8 @@ const ResultPage = () => {
     studentMissingResults,
     studentReportedMissingResults,
     missingReportedSuccess,
+    loadingResolve,
+    successResolve,
   } = useSelector((state) => state.course);
   const { userInfo, myResults } = useSelector((state) => state.user);
   const [selectedCourse, setSelectedCourse] = useState("");
@@ -34,6 +37,7 @@ const ResultPage = () => {
   const [publishSuccess, setPublishSuccess] = useState(null);
   const [searchId, setSearchId] = useState("");
   const [missingResultId, setMissingResultId] = useState("");
+  const [comment, setComment] = useState("");
 
   // Downloading class List
   const fetchClassList = () => {
@@ -41,10 +45,14 @@ const ResultPage = () => {
   };
 
   useEffect(() => {
-    if (classList?.course && published){
-      dispatch(getClassList({course_code: classList?.course}))
+    if (classList?.course && published) {
+      dispatch(getClassList({ course_code: classList?.course }));
     }
-  }, [dispatch, classList, published])
+  }, [dispatch, classList, published]);
+
+  const fetchReportedMissingMarksStudents = () => {
+    dispatch(getClassList({ course_code: classList?.course }, "", true));
+  };
 
   const getDataForDownload = () => {
     const data = classList?.students.map((student, index) => ({
@@ -53,6 +61,20 @@ const ResultPage = () => {
       "FULL NAME": student.student_name,
     }));
     return data;
+  };
+
+  useEffect(() => {
+    if (successResolve) {
+      setComment("");
+    }
+  }, [successResolve]);
+
+  const handleReviewMissingMarks = (student) => {
+    if (comment) {
+      dispatch(
+        resolveMissingMark(student?.missing_mark?.id, { reason: comment })
+      );
+    }
   };
 
   const handleDownload = () => {
@@ -74,7 +96,7 @@ const ResultPage = () => {
   const handleSearchStudentByStaffId = (e) => {
     e.preventDefault();
     dispatch(getClassList({ course_code: selectedCourse }, searchId));
-  }
+  };
 
   useEffect(() => {
     dispatch(getMyCourses("lecturer"));
@@ -101,7 +123,7 @@ const ResultPage = () => {
       dispatch(reportMissingMarks(missingResultId));
       setMissingResultId("");
     }
-  }
+  };
 
   const handlePublishResults = () => {
     dispatch(publishResults({ course_code: classList?.course }));
@@ -110,7 +132,7 @@ const ResultPage = () => {
   const closePublishSuccess = () => {
     dispatch(resetCourseState());
     setPublishSuccess(null);
-  }
+  };
 
   useEffect(() => {
     const newTimeoutId = setTimeout(() => {
@@ -122,29 +144,35 @@ const ResultPage = () => {
   }, [dispatch, enrollments]); // Trigger the effect whenever enrollments change
 
   useEffect(() => {
-    if (userInfo?.user?.user_type === 'student'){
+    if (userInfo?.user?.user_type === "student") {
       dispatch(getStudentResults());
-      dispatch(listStudentMissingResults())
-      dispatch(listStudentReportedMissingResults())
+      dispatch(listStudentMissingResults());
+      dispatch(listStudentReportedMissingResults());
     }
-  }, [dispatch, userInfo, missingReportedSuccess])
+  }, [dispatch, userInfo, missingReportedSuccess]);
 
   useEffect(() => {
-    if (published){
+    if (published) {
       setPublishSuccess(published);
     }
-  }, [published])
+  }, [published]);
 
   useEffect(() => {
-    if (publishSuccess){
+    if (publishSuccess) {
       const interval = setInterval(() => {
         dispatch(resetCourseState());
         setPublishSuccess(null);
-      }, 5000)
+      }, 5000);
 
       return () => clearInterval(interval);
     }
-  }, [dispatch, publishSuccess, missingReportedSuccess])
+  }, [dispatch, publishSuccess, missingReportedSuccess]);
+
+  useEffect(() => {
+    return () => {
+      dispatch(resetClassList());
+    };
+  }, [dispatch]);
 
   return (
     <>
@@ -179,7 +207,7 @@ const ResultPage = () => {
                 </button>
               </div>
             </div>
-            <div className='my-3 border-b flex justify-between items-center'>
+            <div className='my-3 border-b flex justify-between items-end'>
               <form
                 className='flex justify-end gap-1 my-2'
                 onSubmit={handleSearchStudentByStaffId}>
@@ -197,12 +225,17 @@ const ResultPage = () => {
                 </button>
               </form>
               {classList && (
-                <div className='flex md:justify-end gap-3 items-end my-3'>
+                <div className='flex flex-col items-end gap-2'>
                   <h3 className='text-xl uppercase text-gray-600'>
                     {classList?.course}
                   </h3>
                   {classList?.students?.length > 0 && (
-                    <>
+                    <div className="flex gap-3 my-2">
+                      <button
+                        className='bg-red-400 px-4 py-1 text-white'
+                        onClick={fetchReportedMissingMarksStudents}>
+                        Missing Marks Reports
+                      </button>
                       <button
                         className='bg-gray-800 px-4 py-1 text-white'
                         onClick={handleDownload}>
@@ -222,7 +255,7 @@ const ResultPage = () => {
                         onClick={handlePublishResults}>
                         Publish Results
                       </button>
-                    </>
+                    </div>
                   )}
                 </div>
               )}
@@ -245,12 +278,18 @@ const ResultPage = () => {
                 {publishSuccess}
               </Message>
             )}
+            {successResolve && (
+              <Message variant='success' onClose={closePublishSuccess}>
+                Missing mark resolved successfully!
+              </Message>
+            )}
           </section>
           <section className='w-full overflow-x-auto bg-white overflow-x-auto p-4'>
             <table className='w-max text-gray-600 border border-collapse border-gray-300'>
               <thead>
                 <tr>
                   <th className='border border-gray-300 p-2 text-left'>S/NO</th>
+                  <th className='border border-gray-300 p-2 text-left'>Type</th>
                   <th className='border border-gray-300 p-2 text-left'>
                     Reg No
                   </th>
@@ -279,6 +318,20 @@ const ResultPage = () => {
                         {index + 1}
                       </td>
                       <td className='border border-gray-300 px-2'>
+                        {student.missing_mark?.missing_marks ? (
+                          <span className='bg-red-100 text-red-800 px-2 py-1 rounded text-xs font-semibold'>
+                            Missing Mark -{" "}
+                            {student.missing_mark?.resolved
+                              ? "Resolved"
+                              : "Pending"}
+                          </span>
+                        ) : (
+                          <span className='bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-semibold'>
+                            Exam
+                          </span>
+                        )}
+                      </td>
+                      <td className='border border-gray-300 px-2'>
                         {student.reg_no}
                       </td>
                       <td className='border border-gray-300 px-2 uppercase'>
@@ -305,12 +358,32 @@ const ResultPage = () => {
                       <td className='border border-gray-300 px-2 uppercase'>
                         {student.grade}
                       </td>
-                      <td className='border border-gray-300 px-2 uppercase'>
+                      <td className='border border-gray-300 p-2 flex gap-2'>
                         <input
                           type='text'
                           placeholder='comment'
-                          className='w-full px-2 focus:outline-none'
+                          className='flex-1 px-2 focus:outline-none'
+                          value={comment}
+                          name='comment'
+                          onChange={(e) => setComment(e.target.value)}
                         />
+                        <button
+                          type='button'
+                          className={`bg-gray-900 text-white px-4 py-1 rounded ${
+                            !comment || loadingResolve
+                              ? ""
+                              : "opacity-50 cursor-not-allowed"
+                          }`}
+                          onClick={() => handleReviewMissingMarks(student)}>
+                          {loadingResolve ? "Saving..." : "Save"}
+                        </button>
+                        {student.missing_mark?.missing_marks && (
+                          <span className='flex-1 bg-amber-100 text-amber-800 px-2 py-1 rounded text-xs font-semibold'>
+                            Missing Mark reason -{" "}
+                            {student.missing_mark?.missing_marks_reason &&
+                              student.missing_mark?.missing_marks_reason}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -554,7 +627,6 @@ const ResultPage = () => {
                   </table>
                 </div>
               )}
-            
           </div>
         </section>
       )}

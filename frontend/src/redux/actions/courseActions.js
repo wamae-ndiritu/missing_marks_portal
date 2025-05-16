@@ -22,6 +22,9 @@ import {
   reportMissingResultFail,
   reportMissingResultStart,
   reportMissingResultSuccess,
+  resolveMissingMarkFail,
+  resolveMissingMarkStart,
+  resolveMissingMarkSuccess,
   savingFail,
   savingStart,
   savingSuccess,
@@ -306,7 +309,7 @@ export const getLecturerCourses =
     }
   };
 
-export const getClassList = (obj, searchId='') =>  async (dispatch, getState) => {
+export const getClassList = (obj, searchId='', enableMissingMarkFilter=false) =>  async (dispatch, getState) => {
   try {
     dispatch(actionStart());
     const {
@@ -318,8 +321,23 @@ export const getClassList = (obj, searchId='') =>  async (dispatch, getState) =>
         Authorization: `Bearer ${userInfo?.token?.access}`,
       },
     };
-    const { data } = await axios.post(`${BASE_URL}/courses/students/?searchId=${searchId}`, obj, config);
-    dispatch(getClassListSuccess(data));
+    let resData;
+    if (enableMissingMarkFilter) {
+      const { data } = await axios.post(
+        `${BASE_URL}/courses/students/missing-results`,
+        obj,
+        config
+      );
+      resData = data;
+    } else {
+      const { data } = await axios.post(
+        `${BASE_URL}/courses/students/?searchId=${searchId}`,
+        obj,
+        config
+      );
+      resData = data;
+    }
+    dispatch(getClassListSuccess(resData));
   } catch (err) {
     const errMsg =
       err?.data && err?.data?.length
@@ -337,6 +355,47 @@ export const getClassList = (obj, searchId='') =>  async (dispatch, getState) =>
     }
   }
 };
+
+// Get course results courses/reported-missing-results/<int:id>/resolve
+
+export const resolveMissingMark =
+  (missingMarkId, missingMarkData) => async (dispatch, getState) => {
+    try {
+      dispatch(resolveMissingMarkStart());
+
+      const {
+        user: { userInfo },
+      } = getState();
+
+      const config = {
+        headers: {
+          Authorization: `Bearer ${userInfo?.token?.access}`,
+          "Content-Type": "application/json",
+        },
+      };
+
+      await axios.patch(
+        `${BASE_URL}/courses/reported-missing-results/${missingMarkId}/resolve`, missingMarkData, 
+        config
+      );
+      dispatch(resolveMissingMarkSuccess());
+    } catch (err) {
+      const errMsg =
+        err?.data && err?.data?.length
+          ? err.data[0]?.message
+          : err?.data
+          ? err.data?.message || err.data?.detail
+          : err.statusText;
+      if (
+        errMsg === "Authentication credentials were not provided." ||
+        errMsg === "Given token not valid for any token type"
+      ) {
+        dispatch(logout());
+      } else {
+        dispatch(resolveMissingMarkFail(errMsg));
+      }
+    }
+  };
 
 // Save updated marks
 export const autoSaveMarks = (marks) => async (dispatch, getState) => {

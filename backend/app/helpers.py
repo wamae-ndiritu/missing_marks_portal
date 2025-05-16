@@ -38,7 +38,7 @@ def send_missing_mark_notification_to_lecturer(email, course_name):
     Send missing mark update
     """
     subject = 'New Missing Marks Report'
-    message = f"A new missing mark for the {course_name} has created. Please resolve it by checking on your portal."
+    message = f"A new missing mark for the {course_name} has been created. Please resolve it by checking on your portal."
     from_email = ''
     send_mail(subject, message, from_email, [email])
 

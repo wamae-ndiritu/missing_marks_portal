@@ -18,7 +18,7 @@ const Sidebar = () => {
   return (
     <div className='bg-blue-300 text-white w-48 py-4'>
       <div className='w-full border-b px-2 flex flex-col items-center'>
-        <h5 className='my-3 text-xl font-semibold'>Marks Portal</h5>
+        <h5 className='my-3 text-xl font-semibold text-center'>Missing Marks System</h5>
       </div>
       <div className='px-2 py-4'>
         {userInfo?.user?.user_type === "admin" && (

@@ -135,9 +135,13 @@ class Enrollment(models.Model):
     result_permission = models.ForeignKey(ResultPermission, null=True, on_delete=models.SET_NULL)
     grade = models.CharField(max_length=1, default='', null=True)
 
+    def __str__(self):
+        return f"{self.student} - {self.course_code.course_code} - {self.semester.year_start}/{self.semester.year_end} - {self.exam_type}"
+
     class Meta:
         # Define unique constraint for student and course_code combination
         unique_together = ('student', 'course_code')
+
 
 class MissingMarks(models.Model):
     enrollment = models.ForeignKey(
